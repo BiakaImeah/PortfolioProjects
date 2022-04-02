@@ -1,0 +1,155 @@
+---
+title: "Predicting how well people did an exercise activity "
+author: "Biaka Imeah"
+date: "01/04/2022"
+output: html_document
+---
+
+
+# Project Overview
+
+One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, the goal is to use the data from the  accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways - "Six young health participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E)"More information is available from the website here: <http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har> (see the section on the Weight Lifting Exercise Dataset).**The goal is to predict the manner (how well) in which they did the exercise i.e the various classes mentioned above**
+
+## Get packages 
+
+```{r}
+library(knitr)   # general purpose tool for dynamic report generation using R
+library(rpart)   # powerful library use for building classification and regression trees
+library(rpart.plot) 
+library(rattle)   # a graphical user interface for data mining
+library(randomForest)  # An ensemble learning method for classification and regression
+library(corrplot)  # Visual exploratory tool on a correlation matrix
+library(caret)  # package for streamlining the model training process for complex regression
+
+set.seed(12345)
+```
+
+## Get data 
+
+```{r}
+# Get the URL for the training and test data 
+url_train <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+url_test <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+# Download the training and test data using the URL
+training <- read.csv(url(url_train))  #19,622 observations of 160 predictors
+testing  <- read.csv(url(url_test))  # 20 observations of 160 predictors
+
+```
+
+## Data partioning 
+
+```{r}
+
+# create a balanced split (70/30) of the training data 
+inTrain  <- createDataPartition(training$classe, p=0.7, list=FALSE)
+TrainSet <- training[inTrain, ]  #13,737 observations of 160 predictors
+TestSet  <- training[-inTrain, ] #5885 observations of 160 predictors 
+
+dim(TrainSet)  # Dimension of Trainset 
+dim(TestSet) # Dimension of training set that would be used for testing
+
+```
+
+
+## Data preprocessing
+
+1. The training and testing datasets have 160 variables with some variables having a lot of missing data . The missing data would be removed with the pre-processing approach below. 
+2. The **Near Zero variance (NZV)** predictors and ID's are removed as well. The near zero variance predictors are zero variance predictors that have few unique values to the number of samples. The reason behind removing the near zero variance predictors is the idea that if a feature is constant (i.e has zero variance), then it cannot be used to finding any interesting patterns and can be removed from the datasets.
+
+
+### Remove Near Zero Variance Predictors 
+```{r}
+
+# Remove near zero variance predictors
+NZV <- nearZeroVar(TrainSet)
+TrainSet <- TrainSet[, -NZV]  # 13,737 observations of 108 predictors
+TestSet  <- TestSet[, -NZV]   # 5885 observations of 108 variables 
+dim(TrainSet)
+dim(TestSet)
+
+
+```
+
+### Remove predictors that are mostly missing
+
+```{r}
+## Removing  predictors that are mostly missing 
+AllNA    <- sapply(TrainSet, function(x) mean(is.na(x))) > 0.95
+
+TrainSet <- TrainSet[, AllNA==FALSE] # 13,737 observations of 59 predictors
+TestSet  <- TestSet[, AllNA==FALSE]  # 5885 observations of 59 variables 
+dim(TrainSet)
+dim(TestSet)
+
+
+```
+
+### Remove ID  predictors 
+ID features
+```{r}
+TrainSet <- TrainSet[, -(1:5)] # 13,737 observations of 54 predictors
+TestSet  <- TestSet[, -(1:5)]  # 5885 observations of 54 variables 
+dim(TrainSet)
+dim(TestSet)
+
+```
+
+## Correlation Analysis
+
+Determine the association between different variables. 
+
+```{r}
+corMatrix <- cor(TrainSet[, -54])
+corrplot(corMatrix, order = "FPC", method = "circle", type = "upper", 
+         tl.cex = 0.5)
+```
+
+The highly correlated variables are shown in dark colors in the graph above. The principal component analysis (PCA)  approach wouldn't be utilized becuase the correlation among predictors are few. Hence, I will proceed to model development. In case where there were a lot of correlation among predictors, the PCA approach would have been used to find linear combinations of the original predictors that explain a large portion of the variation in the dataset.
+
+## Prediction Modelling
+
+Two surpervised machine learning  algorithms will be applied to  the Train dataset and the best one (with higher accuracy when applied to the Test dataset) will be the model of choose. The methods are: Random Forests and Decision Tree, as described below. A Confusion Matrix is plotted at the end of each analysis to better visualize the accuracy of the models.
+
+### 1. Random Forest Model
+Consists of a large number of individual decision tress that operates as an ensemble. Each individual tree in the random forest spits out a class prediction and the class with the most votes becomes our model's prediction.
+```{r}
+# model fit using th caret package
+set.seed(12345)
+controlRF <- trainControl(method="cv", number=3, verboseIter=FALSE) # use the trainControl method to specify 3-fold cross validation
+modFitRandForest <- train(classe ~ ., data=TrainSet, method="rf",  # Train the model using the "train" method from the caret package
+                          trControl=controlRF)
+modFitRandForest$finalModel
+
+# prediction on Test dataset
+predictRandForest <- predict(modFitRandForest, newdata=TestSet)  # Use the model to make prediction on the test data
+confMatRandForest <- confusionMatrix(factor(predictRandForest), factor(TestSet$classe))  # Plot the confusion matrix
+confMatRandForest
+```
+### 2. Decision Tree Model
+
+```{r}
+# model fit
+set.seed(12345)
+modFitDecTree <- rpart(classe ~ ., data=TrainSet, method="class")
+fancyRpartPlot(modFitDecTree)
+# prediction on Test dataset
+predictDecTree <- predict(modFitDecTree, newdata=TestSet, type="class")
+confMatDecTree <- confusionMatrix(factor(predictDecTree), factor(TestSet$classe))
+confMatDecTree
+```
+## Applying choosen model to test data
+
+The accuracy of the random forest model and decision tree model are:
+
+Random forest: 0.998
+
+Decision Tree: 0.7227
+
+The accuracy of the random forest model suggest that the model performs better than the decision tree model. Therefore, the decision tree model is apply to  the test data.
+
+
+```{r}
+predictTEST <- predict(modFitRandForest, newdata=testing)
+predictTEST
+```
