@@ -1,7 +1,7 @@
 ---
 title: "Predicting how well people did an exercise activity "
 author: "Biaka Imeah"
-date: "01/04/2022"
+date: "17/04/2021"
 output: html_document
 ---
 

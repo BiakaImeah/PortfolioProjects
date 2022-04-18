@@ -1,1 +1,165 @@
+---
+title: "Time-series forecasting of Covid-19 cases "
+author: "Biaka Imeah"
+date: "01/04/2021"
+output: html_document
+---
 
+# Project Overview
+
+The goal of this project is to identify the nature of the pandemic and forecast its progression in Canada
+
+# About Dataset
+This data set contains statistics on the progression of Covid19  between January 2020 to October 2020. It includes six parameters: id, province, state, country, confirmed cases, and fatalities.
+
+# Get packages
+
+```{r, warning=FALSE}
+library(dplyr)
+library(tidyr)
+library(knitr)   # general purpose tool for dynamic report generation using R
+library(ggplot2)
+library(prophet)
+
+```
+
+
+# Get data
+
+```{r}
+data  <- read.csv( file = 'covid19_timeseries.csv')
+
+# Show the first five rows of the data
+
+head(data)
+```
+
+## Structure of data 
+
+```{r}
+# Get information about the data and the variables 
+
+str(data)
+
+```
+
+### Transform the date variable from "character" to "date" type
+Specifying that the date variable is a date - makes it easier to work with.
+```{r}
+data$Dates <- as.Date(data$Dates)
+
+```
+
+
+## Create country_level data - Aggregate at country-level
+
+For example, aggregates provincial or state-level data to country-level data
+
+```{r}
+country_data <- data %>% group_by(Dates,Country.Region) %>% summarize( Death.Cases=sum(Death.Cases), Confirmed.Cases=sum(Confirmed.Cases), Recovered.Cases=sum(Recovered.Cases), .groups = "drop")
+
+```
+
+
+# Extract Canada's data
+Get the for Canada only.
+```{r}
+canada <- country_data %>%filter(Country.Region=="Canada")
+```
+
+## Summarize Canada's data
+
+```{r}
+summary(canada)
+```
+
+## Visualize Canada's  daily confirmed cases
+
+```{r, warning=FALSE}
+##install.packages("gridExtra")
+library("gridExtra")
+confirmed <- ggplot(canada, aes(x=Dates, y= Confirmed.Cases )) +
+  geom_line(color="green") + labs(tittle = "Daily Confirmed COVID-19 cases in Canada", x = " " , y="Confirmed cases")
+
+recovered <- ggplot(canada, aes(x=Dates, y=Recovered.Cases)) +
+   geom_line(color="yellow") + labs(tittle = " Daily  recovered cases in Canada", x = " ", y="Recovered cases")+ scale_y_continuous(limits=c(0,100000))
+
+deaths <- ggplot(canada, aes(x=Dates, y=Death.Cases)) +
+   geom_line(color="red") + labs(tittle = " Daily COVID-19 deaths in Canada", x="Date", y="Deaths")
+
+grid.arrange(confirmed, recovered, deaths, ncol=1, nrow=3) 
+
+```
+
+# Forecasting COVID19 Confirmed cases in Canada - Using Facebook Prophet Library
+
+```{r}
+# Store confirmed cases variable as y
+y <- canada$Confirmed.Cases
+
+# Store date variable as dt
+ds <- canada$Dates
+
+# Create a dataframe object with these two variables
+df <- data.frame(ds, y)
+```
+
+## Prophet Library
+https://facebook.github.io/prophet/
+
+1. Prophet is utilized in a variety of Facebook apps to generate accurate forecasts for planning and goal-setting.
+2. It's a time series data forecasting process based on an additive model that fits non-linear trends with yearly, weekly, and daily seasonality, as well as         holiday impacts.
+
+### Forecasting:
+1. We don't have enough data to capture seasonality as we have only few months of data. Hence, I will run the model without captuirng seasonality.
+```{r}
+# Call the prophet function to fit the model to the prepared dataframe
+
+model <- prophet(df)
+
+
+```
+
+### Prediction:
+
+1. Predicting cases for the next 30 days
+```{r}
+future <- make_future_dataframe(model, periods = 30) 
+pred <- predict(model, future)
+```
+
+### Plot Forecast:
+Interactive plot of forecast
+ 
+```{r}
+dyplot.prophet(model, pred)
+```
+The actual is the black line while predicted values is the blue line. The blue line also shows a confidence interval. On August 1, 2020, there was 118,523 confirmed cases in Canada. The model predicted 117,940
+
+### Forecast Component
+
+On which day of the week is COVID-19 mostly reported?
+
+```{r}
+prophet_plot_components(model, pred)
+```
+
+The top plot is the prediction. The second plot shows that the number of confirmed cases is on average high on Thursdays. This is pattern is not due to the nature of COVID-19 but could be as a result of how data is reported i.e It's an artificial pattern. There could be lag in reporting of cases.
+
+### Model Performance
+
+```{r}
+pred_1 <- pred$yhat[1:282]
+actual <- model$history$y
+plot(actual, pred_1)
+abline(lm(pred_1~actual), col = "yellow")
+summary(lm(pred_1~actual))
+```
+1. The plot shows the actual versus predicted values. Except for the one kink, the plot appears to be fairly linear i.e. there aren't a lot of overestimation or underestimation .
+
+2. In a regression model, R-squared (R2) represents the correlation between the actual outcomes and the predicted values by the model. R2 is between 0 and 1.  The higher (closer to 1) the R2, the better the model. The R2 of the model used in predicting COVID19 cases in Canada is  is 0.9973. It's really high.  This means that 99% of observed variation in confirmed cases can be explain by the model i.e. the model fits the data really well. 
+
+
+# Conclusion
+
+The fitted-model has an R-squared of 0.9973. This implies that te model fits the actual or observed data really well.
