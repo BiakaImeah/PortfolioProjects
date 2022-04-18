@@ -1,7 +1,7 @@
 ---
 title: "Time-series forecasting of Covid-19 cases "
 author: "Biaka Imeah"
-date: "01/04/2021"
+date: "01/05/2021"
 output: html_document
 ---
 
